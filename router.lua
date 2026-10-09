@@ -244,7 +244,7 @@ local function Build(name, zone, raw)
 
   router.valid = nil
   router.tick = nil
-  router.redraw = true
+  router.redraw, router.miniredraw = true, true
 
   Report()
   return true
@@ -253,7 +253,7 @@ end
 local function Stop()
   route = nil
   router.valid = nil
-  router.redraw = true
+  router.redraw, router.miniredraw = true, true
 end
 
 -- /pfr start: route over everything the database search put on this map
@@ -316,7 +316,7 @@ end
 
 local function Step(by)
   route.cur = Wrap(route.cur + by)
-  router.redraw = true
+  router.redraw, router.miniredraw = true, true
   Debug(format("manual %s, heading for waypoint %d/%d", by > 0 and "next" or "prev", route.cur, getn(route.points)))
 end
 
@@ -336,7 +336,7 @@ local function Reverse()
   if route.points[route.cur] == router.visited then
     route.cur = Wrap(route.cur + 1)
   end
-  router.redraw = true
+  router.redraw, router.miniredraw = true, true
   Debug(format("manual reverse, heading for waypoint %d/%d", route.cur, getn(route.points)))
 
   Report("Direction reversed")
@@ -388,7 +388,7 @@ local function Toggle(p)
 
   route.points = rotated
   route.cur = want
-  router.redraw = true
+  router.redraw, router.miniredraw = true, true
 
   Debug(
     format(
@@ -405,7 +405,7 @@ local function SetTarget(p)
   for id, q in ipairs(route.points) do
     if q == p then
       route.cur = id
-      router.redraw = true
+      router.redraw, router.miniredraw = true, true
       Debug(format("map click, heading for waypoint %d/%d", id, getn(route.points)))
     end
   end
@@ -451,7 +451,7 @@ router:SetScript("OnUpdate", function()
     local from = route.cur
     route.cur = Wrap(route.cur + 1)
     this.visited = p
-    this.redraw = true
+    this.redraw, this.miniredraw = true, true
 
     local q = route.points[route.cur]
     Debug(
@@ -688,6 +688,132 @@ overlay:SetScript("OnUpdate", function()
   Draw()
 end)
 
+-- minimap: draw the part of the loop that is in view
+local minimap = CreateFrame("Frame", "pfQuestRouterMinimap", pfMap.drawlayer)
+minimap:SetAllPoints(pfMap.drawlayer)
+minimap:SetFrameLevel(pfMap.drawlayer:GetFrameLevel() + 1)
+
+local MINIMAP_SPACING = 6 -- pixels between two dots of a leg
+
+local mdots, mused = {}, 0
+
+local function MiniDot(x, y, size, r, g, b, a)
+  mused = mused + 1
+  local tex = mdots[mused]
+  if not tex then
+    tex = minimap:CreateTexture(nil, "OVERLAY")
+    tex:SetTexture(pfQuestConfig.path .. "\\img\\route")
+    mdots[mused] = tex
+  end
+
+  tex:SetWidth(size)
+  tex:SetHeight(size)
+  tex:SetVertexColor(r, g, b, a)
+  tex:ClearAllPoints()
+  tex:SetPoint("CENTER", minimap, "CENTER", x, -y)
+  tex:Show()
+end
+
+-- x, y: pixel offset from the minimap center; square minimaps come with pfUI
+local function MiniVisible(x, y, pad, w, h, square)
+  if square then
+    return abs(x) + pad < w / 2 and abs(y) + pad < h / 2
+  end
+  return sqrt(x * x + y * y) + pad < w / 2
+end
+
+local function DrawMini()
+  mused = 0
+
+  local px, py, sizes
+  if route and pfQuestRouter_data.minimap ~= false and pfMap:GetMapIDByName(GetRealZoneText()) == route.zone then
+    px, py = PlayerPos(route.zone)
+    sizes = pfMap.minimap_sizes[route.zone]
+  end
+
+  if px and sizes and pfMap:HasMinimap(route.zone) then
+    local layer = pfMap.drawlayer
+    local zoom = pfMap.minimap_zoom[pfMap.minimap_indoor()][layer:GetZoom()]
+    local w, h = layer:GetWidth(), layer:GetHeight()
+    -- pixels per map unit
+    local xdraw, ydraw = w / (zoom / sizes[1]) / 100, h / (zoom / sizes[2]) / 100
+    local square = pfUI.minimap
+    local reach = sqrt(w * w + h * h) / 2
+
+    local points, n = route.points, getn(route.points)
+    for i = 1, n do
+      local a, b = points[i], points[i == n and 1 or i + 1]
+      local ax, ay = (a[1] - px) * xdraw, (a[2] - py) * ydraw
+      local dx, dy = (b[1] - px) * xdraw - ax, (b[2] - py) * ydraw - ay
+      local len = sqrt(dx * dx + dy * dy)
+
+      if len > 0 then
+        -- the leg leading to the current waypoint is highlighted
+        local hl = (i == n and 1 or i + 1) == route.cur
+        local count = ceil(len / MINIMAP_SPACING)
+        -- only walk the stretch of the leg that can be in view: around its
+        -- closest approach to the player
+        local nearest, span = -(ax * dx + ay * dy) / (len * len), reach / len
+
+        for step = max(1, ceil((nearest - span) * count)), min(count - 1, floor((nearest + span) * count)) do
+          local x, y = ax + dx * step / count, ay + dy * step / count
+          if MiniVisible(x, y, 2, w, h, square) then
+            if hl then
+              MiniDot(x, y, 3, 1, 0.8, 0.4, 1)
+            else
+              MiniDot(x, y, 3, 0.2, 1, 0.8, 0.8)
+            end
+          end
+        end
+      end
+
+      if MiniVisible(ax, ay, 5, w, h, square) then
+        if i == route.cur then
+          MiniDot(ax, ay, 10, 1, 0.8, 0.2, 1)
+        else
+          MiniDot(ax, ay, 7, 0.2, 1, 0.8, 1)
+        end
+      end
+    end
+  end
+
+  for i = mused + 1, getn(mdots) do
+    mdots[i]:Hide()
+  end
+end
+
+minimap:SetScript("OnUpdate", function()
+  if not route then
+    if mused > 0 then
+      DrawMini()
+    end
+    return
+  end
+
+  if (this.throttle or 0) > GetTime() then
+    return
+  end
+  this.throttle = GetTime() + 0.05
+
+  -- redraw on movement, zoom and route changes, and once per second anyway
+  local x, y = GetPlayerMapPosition("player")
+  local zoom = pfMap.drawlayer:GetZoom()
+  if
+    not router.miniredraw
+    and x == this.x
+    and y == this.y
+    and zoom == this.zoom
+    and (this.tick or 0) > GetTime()
+  then
+    return
+  end
+
+  router.miniredraw = nil
+  this.tick = GetTime() + 1
+  this.x, this.y, this.zoom = x, y, zoom
+  DrawMini()
+end)
+
 SLASH_PFQUESTROUTER1, SLASH_PFQUESTROUTER2 = "/pfr", "/router"
 SlashCmdList["PFQUESTROUTER"] = function(input)
   input = string.gsub(input or "", "^%s*(.-)%s*$", "%1")
@@ -705,6 +831,11 @@ SlashCmdList["PFQUESTROUTER"] = function(input)
       "|cff33ffcc/pfr|cffffffff radius <n> |cffcccccc - Merge spawns closer than <n> into one waypoint (current: " .. Radius() .. ")"
     )
     DEFAULT_CHAT_FRAME:AddMessage(
+      "|cff33ffcc/pfr|cffffffff minimap |cffcccccc - Draw the route on the minimap (current: "
+        .. (pfQuestRouter_data.minimap == false and "off" or "on")
+        .. ")"
+    )
+    DEFAULT_CHAT_FRAME:AddMessage(
       "|cff33ffcc/pfr|cffffffff debug |cffcccccc - Explain waypoint changes in chat (current: "
         .. (pfQuestRouter_data.debug and "on" or "off")
         .. ")"
@@ -712,6 +843,18 @@ SlashCmdList["PFQUESTROUTER"] = function(input)
     if route then
       Print(format("active: |cffffcc00%s|r, waypoint %d/%d.", route.name, route.cur, getn(route.points)))
     end
+    return
+  end
+
+  if cmd == "minimap" then
+    -- nil means on, so the default needs no saved value
+    if pfQuestRouter_data.minimap == false then
+      pfQuestRouter_data.minimap = nil
+    else
+      pfQuestRouter_data.minimap = false
+    end
+    router.miniredraw = true
+    Print("Minimap route " .. (pfQuestRouter_data.minimap == false and "|cffff3333OFF" or "|cff33ff33ON"))
     return
   end
 

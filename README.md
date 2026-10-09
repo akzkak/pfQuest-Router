@@ -38,6 +38,7 @@ The arrow points at the next waypoint and shows the route name, waypoint number 
 | `/pfr stop` | Remove the route |
 | `/pfr next` / `/pfr prev` | Skip to the next / previous waypoint |
 | `/pfr reverse` | Walk the loop in the other direction |
+| `/pfr minimap` | Toggle drawing the route on the minimap (default on) |
 | `/pfr debug` | Toggle debug mode: explain every waypoint change in chat (default off) |
 | `/pfr radius <n>` | Merge spawns closer than `<n>` map units into one waypoint (default 2) |
 | `/pfr` | Show help and the active route |
@@ -53,6 +54,10 @@ The loop is drawn on the zone map. The leg and waypoint you are heading for are 
 | Right-click a waypoint | Remove it from the route; the marker stays on the map |
 | Right-click a red waypoint | Add it back to the route |
 | Left-click a waypoint | Head there next |
+
+### Minimap
+
+The part of the loop that is in view is drawn on the minimap in the same colours, so you can see where the route continues while moving. Removed waypoints are not shown there. Toggle it with `/pfr minimap`.
 
 Every change to the route prints a summary to chat:
 
