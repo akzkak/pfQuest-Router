@@ -10,6 +10,7 @@ local strlower, strfind, format = string.lower, string.find, string.format
 local GetTime = GetTime
 
 pfQuestRouter_data = pfQuestRouter_data or {}
+pfQuestRouter_routes = pfQuestRouter_routes or {} -- saved routes, shared by all characters
 
 local DEFAULT_RADIUS = 2 -- map units; spawns closer than this share a waypoint
 local TWO_OPT_PASSES = 20
@@ -206,25 +207,26 @@ end
 
 -- one-line summary of the route as it is right now
 -- change: optional note on what was just done to it
-local function Report(change)
+local function Summary()
   local spawns = 0
   for _, p in ipairs(route.points) do
     spawns = spawns + p[3]
   end
 
   local removed = getn(route.all) - getn(route.points)
-  Print(
-    format(
-      "%s|cffffcc00%s|r in %s: %d spawns, %d waypoints%s, loop length %.0f.",
-      change and change .. " - " or "",
-      route.name,
-      pfMap:GetMapNameByID(route.zone) or route.zone,
-      spawns,
-      getn(route.points),
-      removed > 0 and " (" .. removed .. " removed)" or "",
-      Length(route.points)
-    )
+  return format(
+    "|cffffcc00%s|r in %s: %d spawns, %d waypoints%s, loop length %.0f.",
+    route.name,
+    pfMap:GetMapNameByID(route.zone) or route.zone,
+    spawns,
+    getn(route.points),
+    removed > 0 and " (" .. removed .. " removed)" or "",
+    Length(route.points)
   )
+end
+
+local function Report(change)
+  Print((change and change .. " - " or "") .. Summary())
 end
 
 local function Build(name, zone, raw)
@@ -254,6 +256,80 @@ local function Stop()
   route = nil
   router.valid = nil
   router.redraw, router.miniredraw = true, true
+end
+
+local function Trim(text)
+  return (string.gsub(text or "", "^%s*(.-)%s*$", "%1"))
+end
+
+-- store the active route, including removed waypoints and the loop order
+local function Save(name)
+  if not route then
+    Print("No active route to save.")
+    return
+  end
+
+  name = Trim(name)
+  if name == "" then
+    name = route.name
+  end
+
+  local index, all, order = {}, {}, {}
+  for id, p in ipairs(route.all) do
+    index[p] = id
+    all[id] = { p[1], p[2], p[3], off = p.off }
+  end
+  for id, p in ipairs(route.points) do
+    order[id] = index[p]
+  end
+
+  local overwrite = pfQuestRouter_routes[name]
+  pfQuestRouter_routes[name] = { zone = route.zone, raw = route.raw, all = all, order = order }
+  route.name = name
+  Report(overwrite and "Saved (replaced)" or "Saved")
+  return true
+end
+
+local function Load(name)
+  local saved = pfQuestRouter_routes[name]
+  if not saved or not saved.all or not saved.order or not saved.order[1] then
+    Print("No saved route named |cffffcc00" .. tostring(name) .. "|r.")
+    return
+  end
+
+  -- work on copies, so changes only reach the saved route when saved again
+  local all, points = {}, {}
+  for id, p in ipairs(saved.all) do
+    all[id] = { p[1], p[2], p[3], off = p.off }
+  end
+  for id, from in ipairs(saved.order) do
+    points[id] = all[from]
+  end
+
+  route = { name = name, zone = saved.zone, raw = saved.raw, all = all, points = points, cur = 1 }
+
+  local px, py = PlayerPos(saved.zone)
+  if px then
+    route.cur = Nearest(points, px, py)
+  end
+
+  router.valid = nil
+  router.tick = nil
+  router.redraw, router.miniredraw = true, true
+
+  Report("Loaded")
+  return true
+end
+
+local function Delete(name)
+  if not pfQuestRouter_routes[name] then
+    Print("No saved route named |cffffcc00" .. tostring(name) .. "|r.")
+    return
+  end
+
+  pfQuestRouter_routes[name] = nil
+  Print("Deleted saved route |cffffcc00" .. name .. "|r.")
+  return true
 end
 
 -- /pfr start: route over everything the database search put on this map
@@ -814,14 +890,44 @@ minimap:SetScript("OnUpdate", function()
   DrawMini()
 end)
 
+-- interface for gui.lua
+router.Start = function()
+  StartFromMap()
+end
+router.Stop = function()
+  if route then
+    Stop()
+    Print("Route removed.")
+  end
+end
+router.Reverse = function()
+  if route then
+    Reverse()
+  end
+end
+router.Save, router.Load, router.Delete = Save, Load, Delete
+router.Active = function()
+  return route and route.name, route and Summary()
+end
+
 SLASH_PFQUESTROUTER1, SLASH_PFQUESTROUTER2 = "/pfr", "/router"
 SlashCmdList["PFQUESTROUTER"] = function(input)
   input = string.gsub(input or "", "^%s*(.-)%s*$", "%1")
   local _, _, cmd, rest = strfind(input, "^(%S*)%s*(.-)$")
   cmd = strlower(cmd or "")
 
+  if cmd == "" and pfQuestRouterGUI then
+    if pfQuestRouterGUI:IsShown() then
+      pfQuestRouterGUI:Hide()
+    else
+      pfQuestRouterGUI:Show()
+    end
+    return
+  end
+
   if cmd == "" or cmd == "help" then
     Print("grind routes from database spawn points")
+    DEFAULT_CHAT_FRAME:AddMessage("|cff33ffcc/pfr|cffffffff |cffcccccc - Open or close the route window")
     DEFAULT_CHAT_FRAME:AddMessage("|cff33ffcc/pfr|cffffffff start |cffcccccc - Route over the |cff33ffcc/db|cffcccccc search results on the current map")
     DEFAULT_CHAT_FRAME:AddMessage("|cff33ffcc/pfr|cffffffff <name> |cffcccccc - Search a unit or object by exact name and route it")
     DEFAULT_CHAT_FRAME:AddMessage("|cff33ffcc/pfr|cffffffff stop |cffcccccc - Remove the route")
@@ -839,6 +945,9 @@ SlashCmdList["PFQUESTROUTER"] = function(input)
       "|cff33ffcc/pfr|cffffffff debug |cffcccccc - Explain waypoint changes in chat (current: "
         .. (pfQuestRouter_data.debug and "on" or "off")
         .. ")"
+    )
+    DEFAULT_CHAT_FRAME:AddMessage(
+      "|cff33ffcc/pfr|cffffffff save|cffcccccc / |cffffffffload|cffcccccc / |cffffffffdelete <name> |cffcccccc - Manage saved routes"
     )
     if route then
       Print(format("active: |cffffcc00%s|r, waypoint %d/%d.", route.name, route.cur, getn(route.points)))
@@ -866,6 +975,22 @@ SlashCmdList["PFQUESTROUTER"] = function(input)
 
   if cmd == "start" or cmd == "go" then
     StartFromMap()
+    return
+  end
+
+  if cmd == "save" then
+    Save(rest)
+    return
+  end
+
+  if cmd == "load" or cmd == "delete" then
+    if rest == "" then
+      Print("Usage: |cff33ffcc/pfr " .. cmd .. " <name>|r")
+    elseif cmd == "load" then
+      Load(rest)
+    else
+      Delete(rest)
+    end
     return
   end
 

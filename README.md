@@ -32,10 +32,24 @@ Or search and route in one step (exact unit or object name):
 
 The arrow points at the next waypoint and shows the route name, waypoint number and distance. Reaching the last waypoint continues with the first, so the loop never ends.
 
+### Window
+
+`/pfr` opens and closes a small window:
+
+- **Start / Reverse / Stop** act on the active route, like the commands below.
+- **Save** stores the active route under the name you type (or its current name if left empty). Removed waypoints and the loop order are saved with it.
+- **Saved routes** are listed below; click one to load it, click the `x` twice to delete it. Scroll with the mouse wheel.
+
+Saved routes are shared by all characters on the account. Loading a route draws the loop and waypoints, but not pfQuest's own spawn pins; search with `/db` again if you want those too.
+
 ### Commands
 
 | Command | Description |
 | --- | --- |
+| `/pfr` | Open or close the route window |
+| `/pfr help` | List the commands and show the active route |
+| `/pfr save [name]` | Save the active route |
+| `/pfr load <name>` / `/pfr delete <name>` | Load or delete a saved route |
 | `/pfr start` | Route over the database search results on the current zone map |
 | `/pfr <name>` | Search a unit or object by exact name and route it |
 | `/pfr stop` | Remove the route |
@@ -44,7 +58,6 @@ The arrow points at the next waypoint and shows the route name, waypoint number 
 | `/pfr minimap` | Toggle drawing the route on the minimap (default on) |
 | `/pfr debug` | Toggle debug mode: explain every waypoint change in chat (default off) |
 | `/pfr radius <n>` | Merge spawns closer than `<n>` map units into one waypoint (default 2) |
-| `/pfr` | Show help and the active route |
 
 `/router` is an alias for `/pfr`.
 
@@ -78,7 +91,7 @@ pfQuest Router: Waypoint removed - Forest Boar in Hillsbrad Foothills: 11 spawns
 
 ## Notes
 
-- Routes last for the session only; `/reload` or relogging clears them, like `/db` search results. The radius and debug settings are saved per character.
+- The active route lasts for the session only; `/reload` or relogging clears it, like `/db` search results. Save it to keep it. The radius and debug settings are saved per character.
 - Removing or adding a waypoint re-plans the whole loop for the shortest path, so the order of the remaining waypoints can change. Your current target is kept.
 - `/pfr start` uses every database result on the map except quest nodes. Run `/db clean` first if old searches are still showing.
 - `/pfr radius <n>` rebuilds the route, which brings removed waypoints back.
