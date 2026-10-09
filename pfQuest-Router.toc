@@ -1,0 +1,9 @@
+## Interface: 11200
+## Title: |cff33ffccpf|cffffffffQuest |cffcccccc[Router]
+## Notes: Builds a looping grind route from pfQuest database spawn points and guides you along it with the arrow
+## Version: 1.0.0
+## Dependencies: pfQuest
+## OptionalDeps: pfQuest-octo
+## SavedVariablesPerCharacter: pfQuestRouter_data
+
+router.lua
