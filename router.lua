@@ -206,7 +206,6 @@ local function Active(all)
 end
 
 -- one-line summary of the route as it is right now
--- change: optional note on what was just done to it
 local function Summary()
   local spawns = 0
   for _, p in ipairs(route.points) do
@@ -225,6 +224,7 @@ local function Summary()
   )
 end
 
+-- change: optional note on what was just done to the route
 local function Report(change)
   Print((change and change .. " - " or "") .. Summary())
 end
@@ -502,13 +502,11 @@ router:SetScript("OnUpdate", function()
   if not px then
     if this.valid then
       local x, y = GetPlayerMapPosition("player")
-      Debug(
-        format(
-          "paused, arrow back to pfQuest (%s)",
-          (x == 0 and y == 0) and "no player position on this map"
-            or "map shows zone " .. tostring(CurrentMap()) .. ", route is in " .. tostring(route.zone)
-        )
-      )
+      local reason = "no player position on this map"
+      if x ~= 0 or y ~= 0 then
+        reason = "map shows zone " .. tostring(CurrentMap()) .. ", route is in " .. tostring(route.zone)
+      end
+      Debug("paused, arrow back to pfQuest (" .. reason .. ")")
     end
     this.valid = nil
     return
