@@ -36,6 +36,14 @@ local function modulo(val, by)
   return val - floor(val / by) * by
 end
 
+-- pfQuest-octo's corpse arrow calls a global `modulo` that no addon defines.
+-- Without a route the arrow is rarely visible while dead, so it went
+-- unnoticed; with one it errors every frame after releasing the spirit.
+local _G = getfenv(0)
+if not _G.modulo then
+  _G.modulo = modulo
+end
+
 -- same metric as pfQuest: zone maps are 3:2, so x counts 1.5 times
 local function Dist(ax, ay, bx, by)
   local dx, dy = (ax - bx) * 1.5, ay - by
@@ -541,7 +549,11 @@ router:SetScript("OnUpdate", function()
   end
 
   this.valid = true
-  if not pfQuest.route.arrow:IsShown() then
+
+  -- while dead the arrow belongs to pfQuest (corpse arrow, or hidden when it
+  -- has nothing to show); forcing it visible here would fight pfQuest hiding
+  -- it again and make it flicker until the spirit is released
+  if not pfQuest.route.arrow:IsShown() and not UnitIsDead("player") and not UnitIsGhost("player") then
     pfQuest.route.arrow:Show()
   end
 end)
