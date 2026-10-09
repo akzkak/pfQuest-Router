@@ -38,6 +38,7 @@ The arrow points at the next waypoint and shows the route name, waypoint number 
 | `/pfr stop` | Remove the route |
 | `/pfr next` / `/pfr prev` | Skip to the next / previous waypoint |
 | `/pfr reverse` | Walk the loop in the other direction |
+| `/pfr debug` | Toggle debug mode: explain every waypoint change in chat (default off) |
 | `/pfr radius <n>` | Merge spawns closer than `<n>` map units into one waypoint (default 2) |
 | `/pfr` | Show help and the active route |
 
@@ -63,12 +64,14 @@ pfQuest Router: Waypoint removed - Forest Boar in Hillsbrad Foothills: 11 spawns
 
 - **Waypoints:** spawn points within the merge radius of each other are combined into a single waypoint. Use `/pfr radius 0` for one waypoint per spawn.
 - **Loop:** waypoints are ordered into a short closed loop (nearest neighbour, then 2-opt), starting at the one nearest to you.
-- **Advancing:** a waypoint counts as done when you are within half the radius of it, or when you are within twice the radius and already closer to the next waypoint than the waypoint itself is. The route only moves forward, so the arrow does not send you back to something you already passed.
+- **Advancing:** a waypoint counts as done only when you are within half the radius of it (1 map unit by default). Coming near it, or near a later waypoint on the way, never skips ahead, so the loop is walked strictly in order. Use `/pfr next` or left-click a waypoint to skip manually.
+- **Direction:** the loop is walked in the order it was planned. Use `/pfr reverse` to go the other way round; it continues with the next waypoint in the new direction rather than the one you just left.
 - **Arrow:** the route takes over pfQuest's own arrow, so its position and scale are unchanged. pfQuest gets the arrow back while you are dead or looking at another zone's map.
 
 ## Notes
 
-- Routes last for the session only; `/reload` or relogging clears them, like `/db` search results. The radius setting is saved per character.
+- Routes last for the session only; `/reload` or relogging clears them, like `/db` search results. The radius and debug settings are saved per character.
+- Removing or adding a waypoint re-plans the whole loop for the shortest path, so the order of the remaining waypoints can change. Your current target is kept.
 - `/pfr start` uses every database result on the map except quest nodes. Run `/db clean` first if old searches are still showing.
 - `/pfr radius <n>` rebuilds the route, which brings removed waypoints back.
 - A waypoint marker sits on top of the pfQuest pin at the same spot and blocks that pin's tooltip and clicks while a route is active.

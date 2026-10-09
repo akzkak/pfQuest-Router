@@ -24,6 +24,13 @@ local function Print(msg)
   DEFAULT_CHAT_FRAME:AddMessage("|cff33ffccpf|cffffffffQuest Router|r: " .. msg)
 end
 
+-- /pfr debug: explain every waypoint change and arrow hand-over in chat
+local function Debug(msg)
+  if pfQuestRouter_data.debug then
+    DEFAULT_CHAT_FRAME:AddMessage("|cff33ffccpfR|cffaaaaaa debug:|r " .. msg)
+  end
+end
+
 local function modulo(val, by)
   return val - floor(val / by) * by
 end
@@ -310,6 +317,7 @@ end
 local function Step(by)
   route.cur = Wrap(route.cur + by)
   router.redraw = true
+  Debug(format("manual %s, heading for waypoint %d/%d", by > 0 and "next" or "prev", route.cur, getn(route.points)))
 end
 
 local function ReverseList(points)
@@ -324,7 +332,12 @@ local function Reverse()
   ReverseList(route.points)
   -- we were heading to cur, so now head back to the waypoint before it
   route.cur = Wrap(getn(route.points) - route.cur + 2)
+  -- that one was just visited: don't send the player back to it
+  if route.points[route.cur] == router.visited then
+    route.cur = Wrap(route.cur + 1)
+  end
   router.redraw = true
+  Debug(format("manual reverse, heading for waypoint %d/%d", route.cur, getn(route.points)))
 
   Report("Direction reversed")
 end
@@ -365,10 +378,26 @@ local function Toggle(p)
     end
   end
 
-  route.points = points
-  route.cur = cur or 1
+  -- the new loop may start anywhere: rotate it so the target keeps its number
+  cur = cur or 1
+  local n, want = getn(points), min(route.cur, getn(points))
+  local rotated = {}
+  for i = 1, n do
+    rotated[i] = points[modulo(i - 1 + cur - want, n) + 1]
+  end
+
+  route.points = rotated
+  route.cur = want
   router.redraw = true
 
+  Debug(
+    format(
+      "route re-planned, heading for waypoint %d/%d (%s)",
+      want,
+      n,
+      rotated[want] == target and "same target as before" or "target was removed, taking the one after it"
+    )
+  )
   Report(p.off and "Waypoint removed" or "Waypoint added")
 end
 
@@ -377,6 +406,7 @@ local function SetTarget(p)
     if q == p then
       route.cur = id
       router.redraw = true
+      Debug(format("map click, heading for waypoint %d/%d", id, getn(route.points)))
     end
   end
 end
@@ -394,22 +424,46 @@ router:SetScript("OnUpdate", function()
 
   local px, py = PlayerPos(route.zone)
   if not px then
+    if this.valid then
+      local x, y = GetPlayerMapPosition("player")
+      Debug(
+        format(
+          "paused, arrow back to pfQuest (%s)",
+          (x == 0 and y == 0) and "no player position on this map"
+            or "map shows zone " .. tostring(CurrentMap()) .. ", route is in " .. tostring(route.zone)
+        )
+      )
+    end
     this.valid = nil
     return
   end
 
-  -- advance on arrival, or once the waypoint was passed: we are in its
-  -- vicinity but already closer to the next one than the waypoint itself is,
-  -- so the arrow never points backwards at something already dealt with
+  if not this.valid then
+    Debug(format("following route, heading for waypoint %d/%d", route.cur, getn(route.points)))
+  end
+
+  -- advance on arrival only. Coming near a waypoint, or near a later one on
+  -- the way, never skips ahead: spawns need time to come back, so the loop
+  -- is walked strictly in order.
   local p = route.points[route.cur]
-  local q = route.points[Wrap(route.cur + 1)]
   local d = Dist(px, py, p[1], p[2])
-  if
-    d <= ArrivalRadius()
-    or (p ~= q and d <= Radius() * 2 and Dist(px, py, q[1], q[2]) < Dist(p[1], p[2], q[1], q[2]))
-  then
+  if d <= ArrivalRadius() then
+    local from = route.cur
     route.cur = Wrap(route.cur + 1)
+    this.visited = p
     this.redraw = true
+
+    local q = route.points[route.cur]
+    Debug(
+      format(
+        "waypoint %d reached (distance %.1f) -> %d/%d, %.1f away",
+        from,
+        d,
+        route.cur,
+        getn(route.points),
+        Dist(px, py, q[1], q[2])
+      )
+    )
   end
 
   this.valid = true
@@ -435,6 +489,11 @@ arrow:SetScript("OnUpdate", function()
     if owned then
       -- hand the arrow back and make pfQuest rewrite its texts
       owned, lasttext, lastdist = nil, nil, nil
+      Debug(
+        "arrow handed back to pfQuest ("
+          .. (not route and "route stopped" or not router.valid and "route paused" or "dead")
+          .. ")"
+      )
       this.distance.number = nil
       pfMap.queue_update = GetTime()
     end
@@ -645,9 +704,20 @@ SlashCmdList["PFQUESTROUTER"] = function(input)
     DEFAULT_CHAT_FRAME:AddMessage(
       "|cff33ffcc/pfr|cffffffff radius <n> |cffcccccc - Merge spawns closer than <n> into one waypoint (current: " .. Radius() .. ")"
     )
+    DEFAULT_CHAT_FRAME:AddMessage(
+      "|cff33ffcc/pfr|cffffffff debug |cffcccccc - Explain waypoint changes in chat (current: "
+        .. (pfQuestRouter_data.debug and "on" or "off")
+        .. ")"
+    )
     if route then
       Print(format("active: |cffffcc00%s|r, waypoint %d/%d.", route.name, route.cur, getn(route.points)))
     end
+    return
+  end
+
+  if cmd == "debug" then
+    pfQuestRouter_data.debug = not pfQuestRouter_data.debug or nil
+    Print("Debug mode " .. (pfQuestRouter_data.debug and "|cff33ff33ON" or "|cffff3333OFF"))
     return
   end
 
