@@ -2,6 +2,9 @@
 
 An extension for [pfQuest](https://github.com/brues-code/pfQuest) that turns the spawn points of a database search into a closed loop and guides you around it with the pfQuest arrow, over and over. Made for grinding mobs, herbs, ore or anything else pfQuest can put on the map.
 
+<img width="797" height="439" alt="WoW_Modernized_09-10-26 (2)" src="https://github.com/user-attachments/assets/b8826262-2743-4e2d-9116-1d65685ca13c" />
+<img width="345" height="414" alt="WoW_Modernized_09-10-26" src="https://github.com/user-attachments/assets/1d8ae619-d24e-478d-85c2-556c1b219472" />
+
 ## Requirements
 
 - [pfQuest](https://github.com/brues-code/pfQuest) (required)
